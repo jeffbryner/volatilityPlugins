@@ -46,3 +46,6 @@ etc...
 Both plugins also accept a -p PID argument if you want to specify a specific browser process ID instead of having it search any browser process it finds.
 
 
+Video of twitter recovery at: 
+
+http://youtu.be/K_gBpdK936o
