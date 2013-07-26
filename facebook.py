@@ -54,7 +54,7 @@ class FaceBook(commands.Command):
 
         # Call a subfunction so that it can be used by other plugins
         for proc in tasks.pslist(addr_space):
-            if str(proc.ImageFileName).lower() in("iexplore.exe","firefox","firefox.exe","chrome","chrome.exe"):    
+            if str(proc.ImageFileName).lower() in("iexplore.exe","firefox","firefox.exe","chrome","chrome.exe"):
                 yield proc
 
     def render_text(self, outfd, data):
@@ -88,7 +88,7 @@ class FaceBook(commands.Command):
                 if pages:
                     f=tempfile.TemporaryFile() 
                     for p in pages:
-                        procdata = procSpace.read(p[0], p[1])                        
+                        procdata = procSpace.read(p[0], p[1])
                         if procdata == None:
                             if self._config.verbose:
                                 outfd.write("Memory Not Accessible: Virtual Address: 0x{0:x} File Offset: 0x{1:x} Size: 0x{2:x}\n".format(p[0], proc.obj_offset, p[1]))
@@ -161,7 +161,7 @@ class FaceBook(commands.Command):
                                 
                             outfd.write('Date: {0} comment on {1}\n'.format(fbPostDate,fbLink))
                             outfd.write ('\tAuthor: {0}\n'.format(fbAuthor))
-                            outfd.write('\tText:{0}\n'.format(fbComment.replace(fbAuthor,'').strip()))                            
+                            outfd.write('\tText:{0}\n'.format(fbComment.replace(fbAuthor,'').strip()))
                         except AttributeError as e:
                             pass
                         
@@ -213,7 +213,7 @@ class FaceBook(commands.Command):
                             pass
                         
                         #parse entries
-                        doc=lxml.html.fromstring(fbhtml)                 
+                        doc=lxml.html.fromstring(fbhtml)
                         try:
                             postdate='Unknown'
                             permalink='Unknown'

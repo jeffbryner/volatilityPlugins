@@ -65,7 +65,7 @@ class twitter(commands.Command):
         addr_space = utils.load_as(self._config)
         #find some browsery processes
         for proc in tasks.pslist(addr_space):
-            if str(proc.ImageFileName).lower() in("iexplore.exe","firefox","firefox.exe","chrome","chrome.exe"):    
+            if str(proc.ImageFileName).lower() in("iexplore.exe","firefox","firefox.exe","chrome","chrome.exe"):
                 yield proc    
 
     def render_text(self, outfd, data):        
@@ -76,6 +76,8 @@ class twitter(commands.Command):
         tweetHeaderre=re.compile(r"""(<div.{1,20}stream-item-header.*?</div>)""",re.IGNORECASE|re.DOTALL|re.UNICODE)
         tweetProfilere=re.compile(r"""(<div.{1,20}mini-profile-stats-container.{1,1024}</div>)""",re.IGNORECASE|re.DOTALL|re.UNICODE)
         tweetre=re.compile(r"""(<div.{1,20}stream-item-header.{1,1024}</div>.{1,1024}?<p.{1,20}tweet-text.{1,1500}?</p>)""",re.IGNORECASE|re.DOTALL|re.UNICODE)
+        tweetDMre=re.compile(r"""(<li.{1,20}dm-thread-item.{1,1024}.dm-thread-content.{1,1500}?</li>)""",re.IGNORECASE|re.DOTALL|re.UNICODE)
+        tweetDMConversationre=re.compile(r"""(<div.{1,20}js-dm-item.{1,1000}?</p>)""",re.IGNORECASE|re.DOTALL|re.UNICODE)
         mozcookieUIDre=re.compile(r"""_twitter_sess.{1,700}twid=u%3D(.*?)%7""",re.IGNORECASE|re.DOTALL|re.UNICODE)
         h=HTMLParser.HTMLParser()
         encoding="ascii"
@@ -89,13 +91,13 @@ class twitter(commands.Command):
                     #skip this browser pid
                     continue                  
                 outfd.write('found browser pid: {0}, {1}\n'.format(pid,proc.ImageFileName))
-                foundItemsHashes=list()                
+                foundItemsHashes=list()
                 procSpace = proc.get_process_address_space()
                 pages = procSpace.get_available_pages()
                 if pages:                    
-                    f=tempfile.TemporaryFile() 
+                    f=tempfile.TemporaryFile()
                     for p in pages:
-                        procdata = procSpace.read(p[0], p[1])                        
+                        procdata = procSpace.read(p[0], p[1])
                         if procdata == None:
                             if self._config.verbose:
                                 outfd.write("Memory Not Accessible: Virtual Address: 0x{0:x} File Offset: 0x{1:x} Size: 0x{2:x}\n".format(p[0], proc.obj_offset, p[1]))
@@ -116,7 +118,7 @@ class twitter(commands.Command):
                         aUID=tUID.group(1).encode('ascii','ignore')
                         #lots of cookies in memory, only report different ones.
                         if aUID not in UIDs:
-                            outfd.write('twitter cookie found for userid:{0}\n'.format(aUID))                    
+                            outfd.write('twitter cookie found for userid:{0}\n'.format(aUID))
                             UIDs.append(aUID)
                     
                     #profile (number of followers, folowwing,tweets)
@@ -147,7 +149,7 @@ class twitter(commands.Command):
                             
                     #tweets
                     for tweet in tweetre.finditer(browserData):
-                        thtml=tweet.group(1).encode('ascii','ignore')                                                
+                        thtml=tweet.group(1).encode('ascii','ignore')
                         #supress duplicates
                         #convert tweet to lower and remove spaces, newlines, etc to get hash of html
                         try:
@@ -173,7 +175,7 @@ class twitter(commands.Command):
                         try:
                             tweetAuthorName=doc.find_class('fullname')[0].text.encode('ascii','ignore')
                             tweetAuthorAccount=doc.find_class('username')[0].find('.//b').text.encode('ascii','ignore')
-                            tweetContent=doc.find_class('js-tweet-text')[0].text_content().encode('ascii','ignore')                    
+                            tweetContent=doc.find_class('js-tweet-text')[0].text_content().encode('ascii','ignore')
                             #varieties of time stamping:                         
                             for r in findHTMLClass(doc,'timestamp'):
                                 if 'title' in r.attrib:
@@ -185,6 +187,88 @@ class twitter(commands.Command):
                             pass
                         outfd.write("{0} ({1})\t@{2}\t{3}\n".format(tweetTime,tweetRelativeTime,tweetAuthorAccount,tweetAuthorName))
                         outfd.write("\t\t{0}\n".format(tweetContent))
+
+                    #direct message Headers (i.e. your list of conversations)
+                    for tdm in tweetDMre.finditer(browserData):
+                        thtml=tdm.group(1).encode('ascii','ignore')
+                        #supress duplicates
+                        #convert tweet to lower and remove spaces, newlines, etc to get hash of html
+                        try:
+                            thisHash=sha1(re.sub('[\n ]','',thtml.lower())).hexdigest()
+                            #outfd.write("thtml hash: {0}\n".format(thisHash))
+                            if thisHash in foundItemsHashes:
+                                continue
+                            else:
+                                foundItemsHashes.append(thisHash)
+                        except ValueError as e:
+                            outfd.write("Exception while hashing tweet: {0}".format(e))
+                            pass
+
+                        doc=lxml.html.fromstring(thtml)
+                        #defaults:                        
+                        tweetTime='Unknown'
+                        tweetAuthorName='Unknown'
+                        tweetContent='Unknown'
+                        tweetAuthorAccount='Unknown'
+                        try:
+                            if len(doc.find_class('fullname'))>0:
+                                tweetAuthorName=doc.find_class('fullname')[0].text_content().encode('ascii','ignore')
+                            if len(doc.find_class('username'))>0:
+                                tweetAuthorAccount=doc.find_class('username')[0].text_content().encode('ascii','ignore')
+                            if len(doc.find_class('js-tweet-text'))>0:
+                                tweetContent=doc.find_class('js-tweet-text')[0].text_content().encode('ascii','ignore')
+                            #get time and epoch and convert to readable time
+                            if len(doc.find_class('_timestamp'))>0:
+                                ttime=doc.find_class('_timestamp')[0]
+                                tweetTime='{0} ({1})'.format(ttime.text_content(),time.ctime(float(ttime.attrib.get('data-time'))))                                                            
+                        except IndexError as e:
+                            outfd.write("Exception while parsing direct message {0}\n".format(e))
+                            pass
+                        outfd.write("{0} \t{1}\t{2}\n".format(tweetTime,tweetAuthorAccount,tweetAuthorName))
+                        outfd.write("\t\tDM: {0}\n".format(tweetContent))
+                    
+                    #conversations (i.e. DM details..usually missing context of sender/receiver
+                    for tconv in tweetDMConversationre.finditer(browserData):
+                        #debug
+                        #outfd.write("DMHTML: {0}\n".format(tconv.group(1).encode('ascii','ignore')))
+                        thtml=tconv.group(1).encode('ascii','ignore')
+                        #supress duplicates
+                        #convert tweet to lower and remove spaces, newlines, etc to get hash of html
+                        try:
+                            thisHash=sha1(re.sub('[\n ]','',thtml.lower())).hexdigest()
+                            #outfd.write("thtml hash: {0}\n".format(thisHash))
+                            if thisHash in foundItemsHashes:
+                                continue
+                            else:
+                                foundItemsHashes.append(thisHash)
+                        except ValueError as e:
+                            outfd.write("Exception while hashing tweet: {0}".format(e))
+                            pass
+
+                        doc=lxml.html.fromstring(thtml)
+                        #defaults:
+                        tweetTime='Unknown'
+                        tweetDirection='Unknown'
+                        tweetContent='Unknown'
+                        tweetAuthorImage='Unknown'
+                        try:
+                            if len(doc.find_class('sent'))>0:
+                                tweetDirection='Sent'
+                            if len(doc.find_class('received'))>0:
+                                tweetDirection='Received'
+                            if len(doc.find_class('avatar'))>0:
+                                tweetAuthorImage=doc.find_class('avatar')[0].attrib.get('src')
+                            if len(doc.find_class('js-tweet-text'))>0:
+                                tweetContent=doc.find_class('js-tweet-text')[0].text_content().encode('ascii','ignore')
+                            #get time and epoch and convert to readable time
+                            if len(doc.find_class('_timestamp'))>0:
+                                ttime=doc.find_class('_timestamp')[0]
+                                tweetTime='{0} ({1})'.format(ttime.text_content().strip(),time.ctime(float(ttime.attrib.get('data-time'))))
+                        except IndexError as e:
+                            outfd.write("Exception while parsing direct message {0}\n".format(e))
+                            pass
+                        outfd.write("{0} \t{1}\tAuthorImage: {2}\n".format(tweetTime,tweetDirection,tweetAuthorImage))
+                        outfd.write("\t\tDM: {0}\n".format(tweetContent))
         endTime=time.time()
         outfd.write("{0} seconds\n".format(endTime-startTime))
 
