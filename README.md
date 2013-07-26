@@ -8,6 +8,7 @@ twitter.py
 Extracts twitter html and json data from a memory image. 
 
 sample session: 
+<pre>
 vol.py -f bryner/memimages/win7chromefbtwitter  --profile=Win7SP1x64  twitter
 
 Volatile Systems Volatility Framework 2.3_alpha
@@ -43,6 +44,7 @@ Date: Thursday, July 25, 2013 at 8:01pm about an hour ago in Las Vegas, NV url: 
                 Text: Landed
 etc...
 
+</pre>
 Both plugins also accept a -p PID argument if you want to specify a specific browser process ID instead of having it search any browser process it finds.
 
 
