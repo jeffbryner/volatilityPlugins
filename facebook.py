@@ -36,10 +36,16 @@ import time
 import json
 from hashlib import sha1
 import tempfile
+import binascii
 #pylint: disable-msg=C0111
 
 uescapes = re.compile(r'(?<!\\)\\u[0-9a-fA-F]{4}', re.UNICODE)
 def uescape_decode(match): return match.group().decode('unicode_escape')
+
+safestringre=re.compile('[\x00-\x1F\x80-\xFF]')
+def safestring(badstring):
+        """makes a good strings out of a potentially bad one by escaping chars out of printable range"""
+        return safestringre.sub('',badstring)
 
 class FaceBook(commands.Command):
     """Retrieve facebook artifacts from a memory image"""
@@ -106,7 +112,13 @@ class FaceBook(commands.Command):
                     for fbProfile in fbProfilere.finditer(browserData):
                         fbjson=hParser.unescape(fbProfile.group(1).encode('ascii','ignore'))
                         fbjson=uescapes.sub(uescape_decode,fbjson)
-                        fbProfiles[json.loads(fbjson)['id']]=fbjson
+                        safefbjson=safestring(fbjson)
+                        try:
+                            fbProfiles[json.loads(safefbjson)['id']]=safefbjson
+                        except ValueError as e:
+                            outfd.write("Value error parsing json for facebook profile: {0}\n".format(e))
+                            outfd.write("{0}\n".format(binascii.b2a_base64(fbjson)))
+                            pass
 
                     #fbCookies that could match a fb profile entry and tell us who this user is
                     for fbCookie in fbCookiere.finditer(browserData):
